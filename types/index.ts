@@ -5,7 +5,7 @@ export type TimedSentence = {
   end: number;
 };
 
-export type Lesson = {
+export type StoredLesson = {
   id: string;
   title: string;
   transcript: string;

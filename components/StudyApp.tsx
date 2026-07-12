@@ -2,29 +2,36 @@
 
 import { upload } from "@vercel/blob/client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { alignTranscriptToWords } from "@/lib/text";
+import { alignTranscriptToWords, type WordStamp } from "@/lib/text";
 import { deleteLesson, getLessons, saveLesson } from "@/lib/db";
-import type { Lesson } from "@/types";
+import type { StoredLesson } from "@/types";
 
-type WordStamp = { word: string; start: number; end: number };
+type DictionaryState = {
+  word: string;
+  meaning: string;
+  context: string;
+};
 
 export default function StudyApp() {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [transcript, setTranscript] = useState("");
-  const [lessons, setLessons] = useState<Lesson[]>([]);
-  const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
+  const [lessons, setLessons] = useState<StoredLesson[]>([]);
+  const [activeLesson, setActiveLesson] = useState<StoredLesson | null>(null);
   const [audioUrl, setAudioUrl] = useState("");
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [search, setSearch] = useState("");
+  const [lessonSearch, setLessonSearch] = useState("");
+  const [transcriptSearch, setTranscriptSearch] = useState("");
+  const [working, setWorking] = useState(false);
   const [status, setStatus] = useState("");
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
-  const [dictionary, setDictionary] = useState<{ word: string; meaning: string; context: string } | null>(null);
+  const [dictionary, setDictionary] = useState<DictionaryState | null>(null);
+
   const audioRef = useRef<HTMLAudioElement>(null);
   const transcriptRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    void refreshLessons();
+    void refreshLibrary();
   }, []);
 
   useEffect(() => {
@@ -33,66 +40,97 @@ export default function StudyApp() {
     };
   }, [audioUrl]);
 
-  async function refreshLessons() {
-    const stored = await getLessons();
-    setLessons(stored);
-    if (!activeLesson && stored[0]) loadStoredLesson(stored[0]);
+  async function refreshLibrary() {
+    const saved = await getLessons();
+    setLessons(saved);
+
+    if (!activeLesson && saved[0]) {
+      openLesson(saved[0]);
+    }
   }
 
-  function loadStoredLesson(lesson: Lesson) {
+  function openLesson(lesson: StoredLesson) {
     if (audioUrl) URL.revokeObjectURL(audioUrl);
-    const nextUrl = URL.createObjectURL(lesson.audioBlob);
-    setAudioUrl(nextUrl);
+
+    setAudioUrl(URL.createObjectURL(lesson.audioBlob));
     setActiveLesson(lesson);
     setCurrentIndex(0);
-    setSearch("");
+    setTranscriptSearch("");
     setError("");
+
     setTimeout(() => {
-      if (audioRef.current) audioRef.current.currentTime = lesson.lastPosition || 0;
-    }, 50);
+      if (audioRef.current) {
+        audioRef.current.currentTime = lesson.lastPosition || 0;
+      }
+    }, 80);
   }
 
-  async function readTranscriptFile(file: File | null) {
+  async function chooseTranscript(file: File | null) {
     if (!file) return;
     setTranscript(await file.text());
   }
 
-  async function generateLesson() {
+  async function generateTiming() {
     setError("");
 
-    if (!audioFile) return setError("Choose an MP3 file.");
-    if (!audioFile.name.toLowerCase().endsWith(".mp3")) return setError("The audio must be an MP3 file.");
-    if (!transcript.trim()) return setError("Choose or paste the transcript.");
-    if (audioFile.size > 25 * 1024 * 1024) return setError("The MP3 must be 25 MB or smaller.");
+    if (!audioFile) {
+      setError("Choose an MP3 file first.");
+      return;
+    }
+
+    if (!audioFile.name.toLowerCase().endsWith(".mp3")) {
+      setError("Only MP3 files are accepted.");
+      return;
+    }
+
+    if (audioFile.size > 25 * 1024 * 1024) {
+      setError("The MP3 must be 25 MB or smaller.");
+      return;
+    }
+
+    if (!transcript.trim()) {
+      setError("Choose a TXT file or paste the transcript.");
+      return;
+    }
+
+    setWorking(true);
 
     try {
-      setStatus("Uploading MP3 securely…");
-      setProgress(18);
+      setStatus("1 of 3 — Uploading MP3 securely");
+      setProgress(20);
 
       const blob = await upload(audioFile.name, audioFile, {
         access: "public",
         handleUploadUrl: "/api/upload"
       });
 
-      setStatus("Generating exact word timing with Whisper…");
-      setProgress(48);
+      setStatus("2 of 3 — Whisper is finding every word");
+      setProgress(55);
 
       const response = await fetch("/api/transcribe", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ blobUrl: blob.url, fileName: audioFile.name })
+        body: JSON.stringify({
+          blobUrl: blob.url,
+          fileName: audioFile.name
+        })
       });
 
-      const result = (await response.json()) as { words?: WordStamp[]; error?: string };
+      const result = (await response.json()) as {
+        words?: WordStamp[];
+        error?: string;
+      };
+
       if (!response.ok || !result.words) {
-        throw new Error(result.error || "Timing generation failed.");
+        throw new Error(result.error || "Automatic timing failed.");
       }
 
-      setStatus("Matching the transcript to the audio…");
-      setProgress(78);
+      setStatus("3 of 3 — Matching your transcript");
+      setProgress(84);
 
       const sentences = alignTranscriptToWords(transcript, result.words);
-      const lesson: Lesson = {
+
+      const lesson: StoredLesson = {
         id: crypto.randomUUID(),
         title: audioFile.name.replace(/\.mp3$/i, ""),
         transcript: transcript.trim(),
@@ -103,166 +141,277 @@ export default function StudyApp() {
       };
 
       await saveLesson(lesson);
+      setLessons((current) => [lesson, ...current]);
+      openLesson(lesson);
+
       setProgress(100);
-      setStatus("Lesson ready.");
+      setStatus("Ready — timing saved on this iPad");
       setAudioFile(null);
       setTranscript("");
-      await refreshLessons();
-      loadStoredLesson(lesson);
 
       setTimeout(() => {
-        setStatus("");
         setProgress(0);
-      }, 1800);
+        setStatus("");
+      }, 2200);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Something went wrong.");
+      setError(
+        reason instanceof Error ? reason.message : "Something went wrong."
+      );
       setStatus("");
       setProgress(0);
+    } finally {
+      setWorking(false);
     }
   }
 
   function updateHighlight() {
     if (!activeLesson || !audioRef.current) return;
+
     const time = audioRef.current.currentTime;
-    const index = activeLesson.sentences.findIndex(
+    let index = activeLesson.sentences.findIndex(
       (sentence) => time >= sentence.start && time < sentence.end
     );
-    const safeIndex = index >= 0 ? index : Math.max(0, activeLesson.sentences.findLastIndex((s) => s.start <= time));
-    if (safeIndex !== currentIndex) {
-      setCurrentIndex(safeIndex);
-      const element = transcriptRef.current?.querySelector(`[data-index="${safeIndex}"]`);
-      element?.scrollIntoView({ behavior: "smooth", block: "center" });
+
+    if (index < 0) {
+      index = Math.max(
+        0,
+        activeLesson.sentences.findLastIndex(
+          (sentence) => sentence.start <= time
+        )
+      );
+    }
+
+    if (index !== currentIndex) {
+      setCurrentIndex(index);
+      transcriptRef.current
+        ?.querySelector(`[data-sentence-index="${index}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }
 
-  async function savePosition() {
+  async function saveCurrentPosition() {
     if (!activeLesson || !audioRef.current) return;
-    const updated = { ...activeLesson, lastPosition: audioRef.current.currentTime };
+
+    const updated = {
+      ...activeLesson,
+      lastPosition: audioRef.current.currentTime
+    };
+
     setActiveLesson(updated);
+    setLessons((current) =>
+      current.map((lesson) => (lesson.id === updated.id ? updated : lesson))
+    );
     await saveLesson(updated);
-    setLessons((current) => current.map((lesson) => lesson.id === updated.id ? updated : lesson));
   }
 
-  async function removeCurrentLesson() {
+  async function removeActiveLesson() {
     if (!activeLesson) return;
+
     await deleteLesson(activeLesson.id);
+
     if (audioUrl) URL.revokeObjectURL(audioUrl);
-    setAudioUrl("");
+
+    const remaining = lessons.filter(
+      (lesson) => lesson.id !== activeLesson.id
+    );
+
+    setLessons(remaining);
     setActiveLesson(null);
+    setAudioUrl("");
     setCurrentIndex(0);
-    const stored = await getLessons();
-    setLessons(stored);
-    if (stored[0]) loadStoredLesson(stored[0]);
+
+    if (remaining[0]) openLesson(remaining[0]);
   }
 
-  async function openDictionary(word: string, context: string) {
-    const cleanWord = word.replace(/[^A-Za-z'-]/g, "");
-    setDictionary({ word: cleanWord, meaning: "Loading…", context });
+  async function showDefinition(word: string, context: string) {
+    const clean = word.replace(/[^A-Za-z'-]/g, "");
+    setDictionary({
+      word: clean,
+      meaning: "Loading definition…",
+      context
+    });
 
     try {
-      const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(cleanWord)}`);
+      const response = await fetch(
+        `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(clean)}`
+      );
+
       if (!response.ok) throw new Error();
+
       const data = await response.json();
-      const meaning = data?.[0]?.meanings?.[0]?.definitions?.[0]?.definition ?? "No definition found.";
-      setDictionary({ word: cleanWord, meaning, context });
+      const meaning =
+        data?.[0]?.meanings?.[0]?.definitions?.[0]?.definition ??
+        "No definition was found.";
+
+      setDictionary({ word: clean, meaning, context });
     } catch {
-      setDictionary({ word: cleanWord, meaning: "No definition was found.", context });
+      setDictionary({
+        word: clean,
+        meaning: "No definition was found.",
+        context
+      });
     }
   }
 
-  const filteredLessons = useMemo(
-    () => lessons.filter((lesson) => lesson.title.toLowerCase().includes(search.toLowerCase()) || lesson.transcript.toLowerCase().includes(search.toLowerCase())),
-    [lessons, search]
-  );
+  const visibleLessons = useMemo(() => {
+    const query = lessonSearch.trim().toLowerCase();
+    if (!query) return lessons;
+
+    return lessons.filter(
+      (lesson) =>
+        lesson.title.toLowerCase().includes(query) ||
+        lesson.transcript.toLowerCase().includes(query)
+    );
+  }, [lessonSearch, lessons]);
 
   return (
-    <div className="shell">
-      <header className="topbar">
-        <div className="brand">
-          <small>PRIVATE STUDY PLAYER</small>
+    <div className="app-shell">
+      <header className="hero-header">
+        <div>
+          <div className="version-pill">AUTOMATIC TIMING • VERSION 2</div>
           <h1>TK English Club</h1>
+          <p>Upload MP3 + transcript. The website handles the timing.</p>
         </div>
-        <div className="header-actions">
-          {activeLesson && <button className="danger-button" onClick={removeCurrentLesson}>Delete lesson</button>}
+
+        <div className="hero-badge" aria-label="Automatic timing enabled">
+          <span>AI</span>
+          <strong>Auto Sync</strong>
         </div>
       </header>
 
-      <main className="main-grid">
-        <aside className="panel sidebar">
-          <h2 className="section-title">Add a lesson</h2>
-          <p className="muted">Choose the original MP3 and its transcript. Timing is generated automatically.</p>
+      <main className="workspace">
+        <aside className="card import-card">
+          <div className="step-number">01</div>
+          <h2>Import a lesson</h2>
+          <p className="subtle">
+            The original MP3 stays in your personal lesson library on this
+            device.
+          </p>
 
-          <label className="file-card">
-            <span className="file-icon">🎧</span>
+          <label className="upload-box">
+            <span className="upload-icon">🎧</span>
             <span>
-              <strong>MP3 audio</strong>
-              <small>{audioFile?.name ?? "Choose MP3 — maximum 25 MB"}</small>
+              <strong>Choose MP3</strong>
+              <small>{audioFile?.name ?? "Original AJ audio • up to 25 MB"}</small>
             </span>
             <input
               type="file"
               accept=".mp3,audio/mpeg"
-              onChange={(event) => setAudioFile(event.target.files?.[0] ?? null)}
+              onChange={(event) =>
+                setAudioFile(event.target.files?.[0] ?? null)
+              }
             />
           </label>
 
-          <label className="file-card">
-            <span className="file-icon">📄</span>
+          <label className="upload-box">
+            <span className="upload-icon">📄</span>
             <span>
-              <strong>Transcript file</strong>
-              <small>Choose TXT</small>
+              <strong>Choose transcript</strong>
+              <small>TXT file</small>
             </span>
-            <input type="file" accept=".txt,text/plain" onChange={(event) => void readTranscriptFile(event.target.files?.[0] ?? null)} />
+            <input
+              type="file"
+              accept=".txt,text/plain"
+              onChange={(event) =>
+                void chooseTranscript(event.target.files?.[0] ?? null)
+              }
+            />
           </label>
 
-          <label className="field-label" htmlFor="transcript">Or paste transcript</label>
+          <div className="or-row"><span>or paste it</span></div>
+
           <textarea
-            id="transcript"
+            className="transcript-input"
             value={transcript}
             onChange={(event) => setTranscript(event.target.value)}
-            placeholder="Paste the lesson transcript here…"
+            placeholder="Paste the complete lesson transcript here…"
           />
 
-          <button className="primary-button" disabled={Boolean(status)} onClick={generateLesson}>
-            {status ? "Working…" : "Generate timing and save"}
+          <button
+            className="generate-button"
+            disabled={working}
+            onClick={generateTiming}
+          >
+            <span>✦</span>
+            {working ? "Generating timing…" : "Generate timing and save"}
           </button>
 
           {status && (
-            <div className="progress-box">
-              {status}
-              <div className="progress-track"><div className="progress-bar" style={{ width: `${progress}%` }} /></div>
+            <div className="progress-panel">
+              <strong>{status}</strong>
+              <div className="progress-track">
+                <div
+                  className="progress-fill"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
             </div>
           )}
-          {error && <div className="error-box">{error}</div>}
 
-          <section className="library">
-            <div className="library-head">
-              <h3>Lesson library</h3>
-              <span className="counter">{lessons.length}</span>
+          {error && <div className="error-panel">{error}</div>}
+
+          <section className="library-section">
+            <div className="section-heading">
+              <div>
+                <span className="mini-label">SAVED ON THIS DEVICE</span>
+                <h3>Lesson library</h3>
+              </div>
+              <span className="count-badge">{lessons.length}</span>
             </div>
-            <div className="library-list">
-              {lessons.map((lesson) => (
-                <button
-                  className={`lesson-item ${activeLesson?.id === lesson.id ? "active" : ""}`}
-                  key={lesson.id}
-                  onClick={() => loadStoredLesson(lesson)}
-                >
-                  <strong>{lesson.title}</strong>
-                  <small>{lesson.sentences.length} sentences</small>
-                </button>
-              ))}
+
+            <input
+              className="library-search"
+              value={lessonSearch}
+              onChange={(event) => setLessonSearch(event.target.value)}
+              placeholder="Search saved lessons"
+            />
+
+            <div className="lesson-list">
+              {visibleLessons.length === 0 ? (
+                <div className="library-empty">No saved lessons yet.</div>
+              ) : (
+                visibleLessons.map((lesson) => (
+                  <button
+                    key={lesson.id}
+                    className={`lesson-card ${
+                      activeLesson?.id === lesson.id ? "active" : ""
+                    }`}
+                    onClick={() => openLesson(lesson)}
+                  >
+                    <span className="lesson-play">▶</span>
+                    <span>
+                      <strong>{lesson.title}</strong>
+                      <small>{lesson.sentences.length} timed sentences</small>
+                    </span>
+                  </button>
+                ))
+              )}
             </div>
           </section>
         </aside>
 
-        <section className="panel">
-          <div className="player-head">
+        <section className="card player-card">
+          <div className="player-title-row">
             <div>
-              <p className="eyebrow">NOW STUDYING</p>
-              <h2>{activeLesson?.title ?? "No lesson loaded"}</h2>
+              <span className="mini-label">NOW STUDYING</span>
+              <h2>{activeLesson?.title ?? "Choose your first lesson"}</h2>
             </div>
-            <span className="counter">
-              {activeLesson ? `${currentIndex + 1} / ${activeLesson.sentences.length}` : "0 / 0"}
-            </span>
+
+            <div className="player-actions">
+              <span className="sentence-counter">
+                {activeLesson
+                  ? `${currentIndex + 1} / ${activeLesson.sentences.length}`
+                  : "0 / 0"}
+              </span>
+              {activeLesson && (
+                <button
+                  className="delete-button"
+                  onClick={removeActiveLesson}
+                >
+                  Delete
+                </button>
+              )}
+            </div>
           </div>
 
           <audio
@@ -271,23 +420,37 @@ export default function StudyApp() {
             controls
             preload="metadata"
             onTimeUpdate={updateHighlight}
-            onPause={() => void savePosition()}
-            onEnded={() => void savePosition()}
+            onPause={() => void saveCurrentPosition()}
+            onEnded={() => void saveCurrentPosition()}
           />
 
-          <div className="toolbar">
-            <label className="search">
+          <div className="player-tools">
+            <label className="transcript-search">
               <span>⌕</span>
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search transcript or lessons" />
+              <input
+                value={transcriptSearch}
+                onChange={(event) =>
+                  setTranscriptSearch(event.target.value)
+                }
+                placeholder="Search inside this transcript"
+              />
             </label>
-            <label className="speed">
+
+            <label className="speed-control">
               <span>Speed</span>
-              <select onChange={(event) => {
-                if (audioRef.current) audioRef.current.playbackRate = Number(event.target.value);
-              }}>
+              <select
+                defaultValue="1"
+                onChange={(event) => {
+                  if (audioRef.current) {
+                    audioRef.current.playbackRate = Number(
+                      event.target.value
+                    );
+                  }
+                }}
+              >
                 <option value="0.75">0.75×</option>
                 <option value="0.9">0.90×</option>
-                <option value="1" selected>1.00×</option>
+                <option value="1">1.00×</option>
                 <option value="1.1">1.10×</option>
                 <option value="1.25">1.25×</option>
                 <option value="1.5">1.50×</option>
@@ -296,23 +459,30 @@ export default function StudyApp() {
             </label>
           </div>
 
-          <article className="transcript" ref={transcriptRef}>
+          <article className="reader" ref={transcriptRef}>
             {!activeLesson ? (
-              <div className="empty">
-                <div>
-                  <div style={{ fontSize: "3rem" }}>🎙️</div>
-                  <h3>Your transcript will appear here</h3>
-                  <p>Add an MP3 and transcript to begin.</p>
-                </div>
+              <div className="reader-empty">
+                <div className="reader-symbol">✦</div>
+                <h3>Automatic timing is ready</h3>
+                <p>
+                  Add one MP3 and its transcript, then press the purple button.
+                </p>
               </div>
-            ) : filteredLessons.some((lesson) => lesson.id === activeLesson.id) ? (
+            ) : (
               activeLesson.sentences.map((sentence, index) => {
-                const isMatch = search && sentence.text.toLowerCase().includes(search.toLowerCase());
+                const match =
+                  transcriptSearch.trim() &&
+                  sentence.text
+                    .toLowerCase()
+                    .includes(transcriptSearch.trim().toLowerCase());
+
                 return (
                   <span
                     key={sentence.id}
-                    data-index={index}
-                    className={`sentence ${index === currentIndex ? "current" : ""} ${isMatch ? "search-match" : ""}`}
+                    data-sentence-index={index}
+                    className={`timed-sentence ${
+                      currentIndex === index ? "current" : ""
+                    } ${match ? "search-match" : ""}`}
                     onClick={() => {
                       if (audioRef.current) {
                         audioRef.current.currentTime = sentence.start;
@@ -320,37 +490,51 @@ export default function StudyApp() {
                       }
                     }}
                   >
-                    {sentence.text.split(/(\b[A-Za-z]+(?:['’\-][A-Za-z]+)*\b)/g).map((part, partIndex) =>
-                      /^[A-Za-z]/.test(part) ? (
-                        <span
-                          className="word"
-                          key={partIndex}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            void openDictionary(part, sentence.text);
-                          }}
-                        >
-                          {part}
-                        </span>
-                      ) : part
-                    )}{" "}
+                    {sentence.text
+                      .split(/(\b[A-Za-z]+(?:['’\-][A-Za-z]+)*\b)/g)
+                      .map((part, partIndex) =>
+                        /^[A-Za-z]/.test(part) ? (
+                          <span
+                            key={partIndex}
+                            className="dictionary-word"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void showDefinition(part, sentence.text);
+                            }}
+                          >
+                            {part}
+                          </span>
+                        ) : (
+                          part
+                        )
+                      )}{" "}
                   </span>
                 );
               })
-            ) : (
-              <div className="empty"><p>No match in the current lesson.</p></div>
             )}
           </article>
+
+          <footer className="reader-footer">
+            <span>Tap a sentence to jump to it.</span>
+            <span>Tap a word for its English definition.</span>
+          </footer>
         </section>
       </main>
 
       {dictionary && (
-        <aside className="dictionary">
-          <button className="close" onClick={() => setDictionary(null)}>×</button>
-          <p className="eyebrow">SIMPLE DEFINITION</p>
+        <aside className="dictionary-popover">
+          <button
+            className="dictionary-close"
+            onClick={() => setDictionary(null)}
+          >
+            ×
+          </button>
+          <span className="mini-label">SIMPLE DEFINITION</span>
           <h3>{dictionary.word}</h3>
           <p>{dictionary.meaning}</p>
-          <p className="context">In the lesson: “{dictionary.context}”</p>
+          <div className="dictionary-context">
+            In the lesson: “{dictionary.context}”
+          </div>
         </aside>
       )}
     </div>

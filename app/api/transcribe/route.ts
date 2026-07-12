@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 
 export const maxDuration = 300;
 
-type Body = {
+type RequestBody = {
   blobUrl?: string;
   fileName?: string;
 };
@@ -13,22 +13,29 @@ export async function POST(request: Request): Promise<NextResponse> {
   let blobUrl = "";
 
   try {
-    const body = (await request.json()) as Body;
+    const body = (await request.json()) as RequestBody;
     blobUrl = body.blobUrl ?? "";
 
     if (!blobUrl || !body.fileName) {
-      return NextResponse.json({ error: "Missing audio information." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Audio information is missing." },
+        { status: 400 }
+      );
+    }
+
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error("OPENAI_API_KEY is not configured in Vercel.");
     }
 
     const audioResponse = await fetch(blobUrl);
     if (!audioResponse.ok) {
-      throw new Error("Could not read the uploaded MP3.");
+      throw new Error("The uploaded MP3 could not be downloaded.");
     }
 
     const buffer = Buffer.from(await audioResponse.arrayBuffer());
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    const transcription = await client.audio.transcriptions.create({
+    const result = await openai.audio.transcriptions.create({
       file: await toFile(buffer, body.fileName, { type: "audio/mpeg" }),
       model: "whisper-1",
       language: "en",
@@ -36,32 +43,35 @@ export async function POST(request: Request): Promise<NextResponse> {
       timestamp_granularities: ["word"]
     });
 
-    const words = (transcription.words ?? []).map((word) => ({
-      word: word.word,
-      start: word.start,
-      end: word.end
+    const words = (result.words ?? []).map((item) => ({
+      word: item.word,
+      start: item.start,
+      end: item.end
     }));
 
     if (!words.length) {
       throw new Error("Whisper returned no word timestamps.");
     }
 
-    return NextResponse.json({
-      text: transcription.text,
-      words
-    });
+    return NextResponse.json({ text: result.text, words });
   } catch (error) {
     console.error(error);
+
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Transcription failed." },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Automatic timing failed."
+      },
       { status: 500 }
     );
   } finally {
     if (blobUrl) {
       try {
         await del(blobUrl);
-      } catch (cleanupError) {
-        console.error("Temporary audio cleanup failed:", cleanupError);
+      } catch (error) {
+        console.error("Temporary MP3 cleanup failed:", error);
       }
     }
   }
