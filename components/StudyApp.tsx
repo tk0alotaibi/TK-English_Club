@@ -305,9 +305,9 @@ export default function StudyApp() {
     <div className="app-shell">
       <header className="hero-header">
         <div>
-          <div className="version-pill">AUTOMATIC TIMING • VERSION 4</div>
-          <h1>TK English Club</h1>
-          <p>Upload MP3 + transcript. The website handles the timing.</p>
+          <div className="version-pill">V5 LIVE • AUTOMATIC TIMING</div>
+          <h1>TK English Club <span className="v5-mark">V5</span></h1>
+          <p>One MP3. One transcript. Automatic sentence timing.</p>
         </div>
 
         <div className="hero-badge" aria-label="Automatic timing enabled">
@@ -318,8 +318,8 @@ export default function StudyApp() {
 
       <main className="workspace">
         <aside className="card import-card">
-          <div className="step-number">01</div>
-          <h2>Import a lesson</h2>
+          <div className="step-number">START</div>
+          <h2>Create a synced lesson</h2>
 
           <div className="service-check">
             <div>
@@ -387,7 +387,7 @@ export default function StudyApp() {
             onClick={generateTiming}
           >
             <span>✦</span>
-            {working ? "Generating timing…" : "Generate timing and save"}
+            {working ? "Generating timing…" : "Generate automatic timing"}
           </button>
 
           {status && (
@@ -447,7 +447,7 @@ export default function StudyApp() {
         <section className="card player-card">
           <div className="player-title-row">
             <div>
-              <span className="mini-label">NOW STUDYING</span>
+              <span className="mini-label">V5 PLAYER • NOW STUDYING</span>
               <h2>{activeLesson?.title ?? "Choose your first lesson"}</h2>
             </div>
 
