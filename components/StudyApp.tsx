@@ -305,9 +305,9 @@ export default function StudyApp() {
     <div className="app-shell">
       <header className="hero-header">
         <div>
-          <div className="version-pill">V5 LIVE • AUTOMATIC TIMING</div>
-          <h1>TK English Club <span className="v5-mark">V5</span></h1>
-          <p>One MP3. One transcript. Automatic sentence timing.</p>
+          <div className="version-pill">V5.1 FIXED • AUTO TIMING IS LIVE</div>
+          <h1>TK English Club <span className="v5-mark">V5.1</span></h1>
+          <p>Orange interface confirmed — MP3 and transcript sync automatically.</p>
         </div>
 
         <div className="hero-badge" aria-label="Automatic timing enabled">
@@ -387,7 +387,7 @@ export default function StudyApp() {
             onClick={generateTiming}
           >
             <span>✦</span>
-            {working ? "Generating timing…" : "Generate automatic timing"}
+            {working ? "Generating timing…" : "Create timing automatically"}
           </button>
 
           {status && (

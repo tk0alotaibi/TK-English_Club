@@ -1,6 +1,6 @@
 {
   "name": "tk-english-club",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -22,5 +22,6 @@
   },
   "engines": {
     "node": ">=20"
-  }
+  },
+  "description": "TK English Club V5 fixed deployment marker 2026-07-12"
 }

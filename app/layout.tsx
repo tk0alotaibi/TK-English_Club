@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "TK English Club V2",
+  title: "TK English Club V5.1 Fixed",
   description: "Automatic MP3 transcript timing and synchronized highlighting",
   applicationName: "TK English Club"
 };

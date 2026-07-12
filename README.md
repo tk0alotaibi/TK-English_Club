@@ -1,25 +1,24 @@
-# TK English Club V5
+# TK English Club V5.1 FIXED
 
-This version has a clearly different orange/teal interface and displays:
+The live page must visibly show:
 
-`V5 LIVE • AUTOMATIC TIMING`
+- `V5.1 FIXED • AUTO TIMING IS LIVE`
+- a yellow `V5.1 FIXED` badge in the upper-right corner
+- an orange/teal interface
+- the button `Create timing automatically`
 
-## Deploy from Codespaces
+## Codespaces commands
 
-After uploading `TK-English-Club-V5.zip` to GitHub:
+After uploading `TK-English-Club-V5-FIXED.zip` to GitHub:
 
 ```bash
 git pull origin main
-unzip -o TK-English-Club-V5.zip
+unzip -o TK-English-Club-V5-FIXED.zip
+git status --short
 git add .
-git commit -m "Deploy TK English Club V5"
+git commit -m "Deploy TK English Club V5.1 fixed"
 git pull origin main --rebase
 git push origin main
 ```
 
-Do not run npm commands in Codespaces. Vercel builds automatically.
-
-## Required Vercel configuration
-
-- `OPENAI_API_KEY`
-- A connected Public Vercel Blob store
+Do not run npm commands in Codespaces. Vercel installs and builds automatically.
