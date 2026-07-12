@@ -464,3 +464,46 @@ audio { width: 100%; margin: 20px 0 16px; }
   .reader { min-height: 410px; height: 58vh; }
   .reader-footer { flex-direction: column; gap: 4px; }
 }
+
+
+.service-check {
+  display: flex;
+  gap: 12px;
+  margin: 14px 0;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #faf8ff;
+  color: var(--muted);
+  font-size: .82rem;
+}
+.service-check > div {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+.status-dot.ok { background: #16a34a; }
+.status-dot.bad { background: #dc2626; }
+.setup-warning {
+  margin-bottom: 14px;
+  padding: 11px 13px;
+  border: 1px solid #fed7aa;
+  border-radius: 14px;
+  color: #9a3412;
+  background: #fff7ed;
+  font-size: .82rem;
+  line-height: 1.45;
+}
+.export-button {
+  padding: 7px 10px;
+  border: 1px solid #cfc2ef;
+  border-radius: 999px;
+  color: var(--purple-dark);
+  background: white;
+}

@@ -1,33 +1,24 @@
-# TK English Club — Version 2
+# TK English Club — Version 4
 
-This is the visibly redesigned automatic-timing version.
+V4 avoids the Codespaces npm problem completely.
 
-## Features
+## Deploy
 
-- MP3-only import
-- TXT transcript import or paste
-- OpenAI Whisper word timestamps
-- Automatic transcript-to-audio alignment
-- Synchronized sentence highlighting
-- Saved lesson library in IndexedDB
-- Saved playback position
-- English dictionary popup
-- Transcript and library search
-- Speed control
+Upload this ZIP to the GitHub repository, then in Codespaces run only:
+
+```bash
+git pull origin main
+unzip -o TK-English-Club-V4.zip
+git add .
+git commit -m "Deploy TK English Club V4"
+git pull origin main --rebase
+git push origin main
+```
+
+Do **not** run `npm install`, `npm ci`, or `npm run build` in Codespaces.
+Vercel installs dependencies and builds the project automatically.
 
 ## Required Vercel settings
 
-1. `OPENAI_API_KEY` in Environment Variables.
-2. A Vercel Blob store connected to the project. This automatically adds `BLOB_READ_WRITE_TOKEN`.
-
-## Deployment
-
-Extract this ZIP at the repository root, then run:
-
-```bash
-npm install
-npm run build
-git add .
-git commit -m "Deploy real TK English Club V2"
-git push origin main
-```
+- `OPENAI_API_KEY`
+- A connected Public Vercel Blob store, which adds `BLOB_READ_WRITE_TOKEN`

@@ -12,6 +12,11 @@ type DictionaryState = {
   context: string;
 };
 
+type ServiceStatus = {
+  openai: boolean;
+  blob: boolean;
+};
+
 export default function StudyApp() {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [transcript, setTranscript] = useState("");
@@ -26,12 +31,14 @@ export default function StudyApp() {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
   const [dictionary, setDictionary] = useState<DictionaryState | null>(null);
+  const [serviceStatus, setServiceStatus] = useState<ServiceStatus | null>(null);
 
   const audioRef = useRef<HTMLAudioElement>(null);
   const transcriptRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     void refreshLibrary();
+    void checkServices();
   }, []);
 
   useEffect(() => {
@@ -39,6 +46,36 @@ export default function StudyApp() {
       if (audioUrl) URL.revokeObjectURL(audioUrl);
     };
   }, [audioUrl]);
+
+  async function checkServices() {
+    try {
+      const response = await fetch("/api/health", { cache: "no-store" });
+      if (!response.ok) throw new Error();
+      setServiceStatus((await response.json()) as ServiceStatus);
+    } catch {
+      setServiceStatus({ openai: false, blob: false });
+    }
+  }
+
+  function exportTimingJson() {
+    if (!activeLesson) return;
+
+    const payload = {
+      title: activeLesson.title,
+      transcript: activeLesson.transcript,
+      sentences: activeLesson.sentences
+    };
+
+    const file = new Blob([JSON.stringify(payload, null, 2)], {
+      type: "application/json"
+    });
+    const url = URL.createObjectURL(file);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${activeLesson.title}-timing.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   async function refreshLibrary() {
     const saved = await getLessons();
@@ -268,7 +305,7 @@ export default function StudyApp() {
     <div className="app-shell">
       <header className="hero-header">
         <div>
-          <div className="version-pill">AUTOMATIC TIMING • VERSION 2</div>
+          <div className="version-pill">AUTOMATIC TIMING • VERSION 4</div>
           <h1>TK English Club</h1>
           <p>Upload MP3 + transcript. The website handles the timing.</p>
         </div>
@@ -283,6 +320,23 @@ export default function StudyApp() {
         <aside className="card import-card">
           <div className="step-number">01</div>
           <h2>Import a lesson</h2>
+
+          <div className="service-check">
+            <div>
+              <span className={`status-dot ${serviceStatus?.openai ? "ok" : "bad"}`} />
+              OpenAI
+            </div>
+            <div>
+              <span className={`status-dot ${serviceStatus?.blob ? "ok" : "bad"}`} />
+              MP3 storage
+            </div>
+          </div>
+          {serviceStatus && (!serviceStatus.openai || !serviceStatus.blob) && (
+            <div className="setup-warning">
+              {!serviceStatus.openai && <div>OPENAI_API_KEY is missing.</div>}
+              {!serviceStatus.blob && <div>Connect a Vercel Blob store before uploading MP3 files.</div>}
+            </div>
+          )}
           <p className="subtle">
             The original MP3 stays in your personal lesson library on this
             device.
@@ -404,12 +458,17 @@ export default function StudyApp() {
                   : "0 / 0"}
               </span>
               {activeLesson && (
-                <button
-                  className="delete-button"
-                  onClick={removeActiveLesson}
-                >
-                  Delete
-                </button>
+                <>
+                  <button className="export-button" onClick={exportTimingJson}>
+                    Export JSON
+                  </button>
+                  <button
+                    className="delete-button"
+                    onClick={removeActiveLesson}
+                  >
+                    Delete
+                  </button>
+                </>
               )}
             </div>
           </div>
